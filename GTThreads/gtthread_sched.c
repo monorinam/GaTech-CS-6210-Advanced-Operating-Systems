@@ -29,7 +29,7 @@ steque_t *run_queue;
 /* List of threads not currently running (blocked,finished,cancelled) */
 steque_t *dead_list;
 // Is the thread already initialized? :flag
-bool init_done = false;
+int init_done = 0;
 //Count of all threads started
 long int thread_cnt = 0;
 long quantum;
@@ -41,20 +41,20 @@ static gtthread* find_thread_in_queue(gtthread_t thread, int *queue){
   *queue = 0;
   gtthread *temp_thread;
   gtthread *found_thread;
-  int run_length = steque_size(&run_queue);
-  int dead_length = steque_size(&dead_list);
+  int run_length = steque_size(run_queue);
+  int dead_length = steque_size(dead_list);
   int flag = 0;
   // Look in run queue first
   for(int i = 0; i < run_length; i++){
-    temp_thread = steque_front(&run_queue);
-    if(temp_thread->tid == thread)
+    temp_thread = steque_front(run_queue);
+    if(temp_thread->thread_id == thread)
     {
       //we care about the order of the run queue
       // So cycle through the whole thing anyway
-      found_thread = steque_front(&run_queue);
+      found_thread = steque_front(run_queue);
       *queue = RUNQ; 
     }
-    steque_cycle(&run_queue);
+    steque_cycle(run_queue);
 
   }
 
@@ -62,8 +62,8 @@ static gtthread* find_thread_in_queue(gtthread_t thread, int *queue){
     return found_thread;
   //Else look in the terminate queue
   for(int i = 0; i < dead_length; i++){
-    temp_thread = steque_front(&dead_list);
-    if(temp_thread->tid == thread)
+    temp_thread = steque_front(dead_list);
+    if(temp_thread->thread_id == thread)
     {
       // We dont care about the order of the dead queue,
       // so return straight away
@@ -71,41 +71,43 @@ static gtthread* find_thread_in_queue(gtthread_t thread, int *queue){
       return temp_thread;
 
     }
-    steque_cycle(&dead_list);
+    steque_cycle(dead_list);
   }
 
   //Did not find thread
   return NULL;
 
 }
-static void cancel_thread(gtthread *this_thread){
-  // Mark the thread as done
-  // Then clear its join queue and add to run queue
-  // Add the thread to the dead queue
-  this_thread->state == TERMIN;
-  clear_join_queue(this_thread);
-  steque_enqueue(&dead_list,this_thread);
-}
-static void run_next_thread(gtthread *curr_thread){
-  gtthread *next_thread;
-  do{
-      next_thread = (gtthread*) steque_front(&run_queue);
-      if(next_thread->state == CANCELREQ){
-        cancel_thread(next_thread);
-        steque_pop(&run_queue);
-      }
-    }while(next_thread->state == CANCELREQ);
-  swapcontext(&curr_thread->context,&next_thread->context);
-}
 /* This clears the join queue of the current thread
 that is cancelled or completed and adds it to the 
 end of the run queue
 */
 static void clear_join_queue(gtthread* thread){
-  while(!steque_isempty(&thread->joinlist)){
-    steque_enqueue(&run_queue,(gtthread *)steque_pop(&thread->joinlist));
+  while(!steque_isempty(thread->joinlist)){
+    steque_enqueue(run_queue,(gtthread *)steque_pop(thread->joinlist));
   }
 }
+static void cancel_thread(gtthread *this_thread){
+  // Mark the thread as done
+  // Then clear its join queue and add to run queue
+  // Add the thread to the dead queue
+  this_thread->state = TERMIN;
+  clear_join_queue(this_thread);
+  steque_enqueue(dead_list,this_thread);
+}
+
+static void run_next_thread(gtthread *curr_thread){
+  gtthread *next_thread;
+  do{
+      next_thread = (gtthread*) steque_front(run_queue);
+      if(next_thread->state == CANCELREQ){
+        cancel_thread(next_thread);
+        steque_pop(run_queue);
+      }
+    }while(next_thread->state == CANCELREQ);
+  swapcontext(&curr_thread->context,&next_thread->context);
+}
+
 /* @Citation: From defcon.c
 */
 // This handler puts the old thread at the end of the steque
@@ -113,9 +115,10 @@ static void clear_join_queue(gtthread* thread){
 void alrm_handler(int sig){
   gtthread *curr_thread;
   gtthread *next_thread;
+  sigset_t oldset;
   sigprocmask(SIG_BLOCK,&vtalrm,&oldset);
   //Add old thread to end of run queue
-  steque_enqueue(&run_queue, curr_thread = (gtthread*) steque_pop(&run_queue));
+  steque_enqueue(run_queue, curr_thread = (gtthread*) steque_pop(run_queue));
   //Run next thread
   run_next_thread(curr_thread);
   // Unblock signals
@@ -127,9 +130,9 @@ static void start_routine_wrapper(void *(*start_routine)(void *), void *arg)
     void * retval = start_routine(arg);
     /* Mark current thread as done */
     gtthread * curr_thread = (gtthread *) steque_front(run_queue);
-    curr_thread->retval = retval;
+    curr_thread->returnval = retval;
     curr_thread->state = TERMIN;
-    steque_enqueue(&dead_list, curr_thread);
+    steque_enqueue(dead_list, curr_thread);
 }
 
 
@@ -181,12 +184,12 @@ void gtthread_init(long period){
     act.sa_handler = &alrm_handler;
     if (sigaction(SIGVTALRM, &act, NULL) < 0) {
       perror ("sigaction");
-      return 1;
+      return;
     }
 
   }
   // Define main thread
-  gtthread *main_thread = (gtthread) malloc(sizeof(gtthread));
+  gtthread *main_thread = (gtthread*) malloc(sizeof(gtthread));
 
   if(main_thread == NULL){
     perror("Main thread not initialized");
@@ -210,7 +213,7 @@ void gtthread_init(long period){
     exit(EXIT_FAILURE);
   }
   main_thread->context.uc_stack.ss_size = SIGSTKSZ;
-  steque_init(&main_thread->waiting_threads);
+  steque_init(main_thread->joinlist);
   //Main thread state
   main_thread->state = RDY;
 
@@ -218,14 +221,14 @@ void gtthread_init(long period){
   run_queue = (steque_t *) malloc (sizeof(steque_t));
   dead_list = (steque_t *) malloc (sizeof(steque_t));
 
-  steque_init(&run_queue);
-  steque_init(&dead_list);
+  steque_init(run_queue);
+  steque_init(dead_list);
 
   //Add mainthread to the thread queue
-  steque_enqueue(&run_queue, main_thread);
+  steque_enqueue(run_queue, main_thread);
 
 
-  init_done = true;
+  init_done = 1;
 
 }
 
@@ -244,9 +247,10 @@ int gtthread_create(gtthread_t *thread,
   }
   /*Create a new instance of thread, add context and then 
   add thread to the run queue */
-  gtthread this_thread;
+  gtthread *this_thread;
+  gtthread *curr_thread;
   sigprocmask(SIG_BLOCK, &vtalrm, NULL);
-  if((this_thread = (gtthread *) malloc(sizeof(gtthread))) == NULL);
+  if((this_thread = (gtthread *) malloc(sizeof(gtthread))) == NULL)
   {
     perror("Error: Cannot allocate memory for new thread");
     //Unblock thread
@@ -259,7 +263,7 @@ int gtthread_create(gtthread_t *thread,
   this_thread->thread_id = ++ thread_cnt;
   *thread = thread_cnt;
   this_thread->state = RDY;
-  steque_init(&this_thread->joinlist);
+  steque_init(this_thread->joinlist);
 
   /* Context for this new thread */
   if(getcontext(&this_thread->context) == -1)
@@ -275,13 +279,13 @@ int gtthread_create(gtthread_t *thread,
   }
   this_thread->context.uc_stack.ss_size = SIGSTKSZ;
   /*Get the caller */
-  self = (gtthread* )steque_front(&run_queue);
-  this_thread->context.uc_link = &self->context;
+  curr_thread = (gtthread* ) steque_front(run_queue);
+  this_thread->context.uc_link = &curr_thread->context;
   
 
   makecontext(&this_thread->context, (void (*)(void)) start_routine_wrapper, 2, start_routine, arg);
   /* Add this thread to queue */
-  steque_enqueue(&run_queue,this_thread);
+  steque_enqueue(run_queue,this_thread);
   sigprocmask(SIG_UNBLOCK, &vtalrm, NULL);
   return SUCCESS;
   
@@ -294,7 +298,7 @@ int gtthread_create(gtthread_t *thread,
 
 int gtthread_join(gtthread_t thread, void **status){
   int which_queue;
-  gtthreads *target,*curr;
+  gtthread *target,*curr;
   sigset_t oldset;
   // Block alarms
   sigprocmask(SIG_BLOCK,&vtalrm,&oldset);
@@ -307,9 +311,9 @@ int gtthread_join(gtthread_t thread, void **status){
   //If the thread isn't completed (not in terminate queue)
   if(which_queue == RUNQ)
   {
-      curr=(gtthread *) steque_pop(&run_queue);
+      curr=(gtthread *) steque_pop(run_queue);
       //Add current thread to the join queue of the target thread
-      steque_enqueue(&target->joinlist,curr);
+      steque_enqueue(target->joinlist,curr);
       //Now run the next thread from the run queue
       run_next_thread(curr);
     
@@ -317,7 +321,7 @@ int gtthread_join(gtthread_t thread, void **status){
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
   //Set status
   if(status)
-    *status = target->retval;
+    *status = target->returnval;
 
   return 0; //success
 }
@@ -337,10 +341,10 @@ void gtthread_exit(void* retval){
   So they are not lost from the run queue
   Then change context to the next thread in the run queue
   */
-  curr_thread = (gtthread*) steque_pop(&run_queue);
-  curr_thread->retval = retval;
+  curr_thread = (gtthread*) steque_pop(run_queue);
+  curr_thread->returnval = retval;
   curr_thread->state = TERMIN;
-  steque_enqueue(&dead_list,curr_thread);
+  steque_enqueue(dead_list,curr_thread);
   clear_join_queue(curr_thread);
   run_next_thread(curr_thread);
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
@@ -361,8 +365,8 @@ void gtthread_yield(void){
   /* The current thread is moved to the end of the run queue
   * And the context is swapped to the next thread 
   */
-  curr_thread = (gtthread *)steque_pop(&run_queue);
-  steque_enqueue(&run_queue,curr_thread);
+  curr_thread = (gtthread *)steque_pop(run_queue);
+  steque_enqueue(run_queue,curr_thread);
   run_next_thread(curr_thread);
 
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
@@ -414,6 +418,6 @@ int  gtthread_cancel(gtthread_t thread){
  */
 gtthread_t gtthread_self(void){
   gtthread_t ID;
-  return ((gtthread*)steque_front(&run_queue))->tid;
+  return ((gtthread*)steque_front(run_queue))->thread_id;
 
 }
