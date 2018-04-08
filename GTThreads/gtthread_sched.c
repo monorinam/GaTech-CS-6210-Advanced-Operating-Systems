@@ -309,6 +309,9 @@ int gtthread_join(gtthread_t thread, void **status){
     return TNOTFND; //thread not found
   }
   //If the thread isn't completed (not in terminate queue)
+  // If the thread has a cancel request, wait til it is to be run next
+  // and then cancel it in the run_next_thread method.
+  // Here we just join to it anyway
   if(which_queue == RUNQ)
   {
       curr=(gtthread *) steque_pop(run_queue);

@@ -30,7 +30,7 @@ typedef struct gtthread {
 	gtthread_t thread_id; //thread ID
 	ucontext_t context; //context 
 	threadstate_t state;// thread state 
-	steque_t* waiting_threads; //queue for threads waiting to join this one
+	steque_t* joinlist; //queue for threads waiting to join this one
 	void* returnval; // return value
 
 } gtthread;
