@@ -18,10 +18,15 @@
 */
 typedef enum threadstate_t {
 	RDY,
+	BLOCK, //Blocked by a mutex
 	CANCELREQ, //Cancel request for the thread
 	TERMIN // Thread is completed
 
  } threadstate_t;
+ /* Define the gthread struct separately from the gtthread_t (thread ID)
+ * Because the thread ID is returned by the functions and we dont want
+ * the thread struct to be returned  (and the mutex struct also uses the
+ * thread ID */
 typedef long int gtthread_t; //this is the thread ID, to mirror pthread_t
 
 /* Data structure for a single thread */
@@ -34,13 +39,15 @@ typedef struct gtthread {
 	void* returnval; // return value
 
 } gtthread;
+
 /* Mutex struct */
-typedef struct gtthread_mutex_t
-{
-	steque_t* queue;
-	char locked;
-	
-}gtthread_mutex_t;
+/* Here we dont define two types since the mutex is never returned by any
+of the API functions */
+typedef struct gtthread_mutex_t{
+	gtthread_t lock_thread_ID; // ID of thread holding the lock currently
+	steque_t waiting_list; //list of threads waiting on mutex 
+
+}  ;
 
 
 void gtthread_init(long period);
