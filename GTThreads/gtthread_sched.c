@@ -53,6 +53,7 @@ static gtthread* find_thread_in_queue(gtthread_t thread, int *queue){
       // So cycle through the whole thing anyway
       found_thread = steque_front(run_queue);
       *queue = RUNQ; 
+      
     }
     steque_cycle(run_queue);
 
@@ -107,7 +108,50 @@ static void run_next_thread(gtthread *curr_thread){
     }while(next_thread->state == CANCELREQ);
   swapcontext(&curr_thread->context,&next_thread->context);
 }
+/*
+* These two function are not an API function
+* They only public since they are called
+* by the mutex functions.
+*/
+/*
+1.
+Remove the thread from the run queue of the current thread
+* And run the next thread 
+* This thread is added to the wait queue of the mutex
+* and runs when the mutex unlocks this thread
+*/
+void block_thread()
+{
+  //Pop the current thread from the run queue
+  gtthread *curr_thread = (gtthread*) steque_pop(run_queue);
+  //Mark thread as blocked and add to dead_list
+  curr_thread->state == BLOCK;
+  steque_enqueue(dead_list,curr_thread);
+  //Run the next thread
+  run_next_thread(curr_thread);
 
+}
+/* 2.
+Remove a blocked thread from the dead_list
+and add it to the running queue
+*/
+void unblock_thread(gtthread_t ID)
+{
+  //Find the thread using the thread ID in the dead list
+  int which_queue,pos;
+  gtthread *thread;
+  thread = find_thread_in_queue(ID,&which_queue);
+  if(which_queue == DEADQ && thread->state == BLOCK){
+    //Should always be the case
+    //Add the thread to the running queue
+    thread->state = RDY;
+    //The found thread is always at the start of the dead list
+    // after find_thread_in_queue is called
+    steque_pop(dead_list);
+    steque_enqueue(run_queue,thread);
+  }
+
+}
 /* @Citation: From defcon.c
 */
 // This handler puts the old thread at the end of the steque
@@ -115,8 +159,8 @@ static void run_next_thread(gtthread *curr_thread){
 void alrm_handler(int sig){
   gtthread *curr_thread;
   gtthread *next_thread;
-  sigset_t oldset;
-  sigprocmask(SIG_BLOCK,&vtalrm,&oldset);
+
+  sigprocmask(SIG_BLOCK,&vtalrm,NULL);
   //Add old thread to end of run queue
   steque_enqueue(run_queue, curr_thread = (gtthread*) steque_pop(run_queue));
   //Run next thread
@@ -299,9 +343,9 @@ int gtthread_create(gtthread_t *thread,
 int gtthread_join(gtthread_t thread, void **status){
   int which_queue;
   gtthread *target,*curr;
-  sigset_t oldset;
+
   // Block alarms
-  sigprocmask(SIG_BLOCK,&vtalrm,&oldset);
+  sigprocmask(SIG_BLOCK,&vtalrm,NULL);
   //Find the target thread
   target = find_thread_in_queue(thread,&which_queue);
   if(target == NULL){
@@ -334,8 +378,7 @@ int gtthread_join(gtthread_t thread, void **status){
  */
 void gtthread_exit(void* retval){
   gtthread *curr_thread;
-  sigset_t oldset;
-  sigprocmask(SIG_BLOCK,&vtalrm,&oldset);
+  sigprocmask(SIG_BLOCK,&vtalrm,NULL);
   /*
   Take the thread from the run queue
   Mark its status as TERMIN
@@ -345,10 +388,10 @@ void gtthread_exit(void* retval){
   Then change context to the next thread in the run queue
   */
   curr_thread = (gtthread*) steque_pop(run_queue);
+  clear_join_queue(curr_thread);
   curr_thread->returnval = retval;
   curr_thread->state = TERMIN;
   steque_enqueue(dead_list,curr_thread);
-  clear_join_queue(curr_thread);
   run_next_thread(curr_thread);
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
 
@@ -363,8 +406,8 @@ void gtthread_exit(void* retval){
  */
 void gtthread_yield(void){
   gtthread *curr_thread;
-  sigset_t oldset;
-  sigprocmask(SIG_BLOCK,&vtalrm,&oldset);
+
+  sigprocmask(SIG_BLOCK,&vtalrm,NULL);
   /* The current thread is moved to the end of the run queue
   * And the context is swapped to the next thread 
   */
@@ -399,9 +442,9 @@ int  gtthread_cancel(gtthread_t thread){
   */
   gtthread *cancelling_thread;
   int which_queue;
-  sigset_t oldset;
 
-  sigprocmask(SIG_BLOCK,&vtalrm,&oldset);
+
+  sigprocmask(SIG_BLOCK,&vtalrm,NULL);
   cancelling_thread = find_thread_in_queue(thread,&which_queue);
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
 
@@ -421,6 +464,9 @@ int  gtthread_cancel(gtthread_t thread){
  */
 gtthread_t gtthread_self(void){
   gtthread_t ID;
-  return ((gtthread*)steque_front(run_queue))->thread_id;
+  sigprocmask(SIG_BLOCK,&vtalrm,NULL);
+  ID = ((gtthread*)steque_front(run_queue))->thread_id;
+  sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
+  return ID;
 
 }
