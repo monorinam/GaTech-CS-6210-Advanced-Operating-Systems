@@ -11,6 +11,7 @@ gtthreads library.  The locks can be implemented with a simple queue.
 
 
 #include "gtthread.h"
+//#include "gtthread_sched.c"
 #define DEFID -1 //default ID for lock.
 sigset_t vtalrm;
 /*
@@ -64,7 +65,6 @@ int gtthread_mutex_lock(gtthread_mutex_t* mutex){
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
   return 0;
 }
-`
 /*
   The gtthread_mutex_unlock() is analogous to pthread_mutex_unlock.
   Returns zero on success.
@@ -83,11 +83,12 @@ int gtthread_mutex_unlock(gtthread_mutex_t *mutex){
     if(!steque_isempty(mutex->waiting_list)){
       //If there is a waiting thread add it to list
       // Of runnable threads
-      unblock_thread(steque_pop(mutex->waiting_list));
+      unblock_thread((gtthread_t) steque_pop(mutex->waiting_list));
     }
 
   }
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
+  return 0;
 }
 
 /*
@@ -100,5 +101,6 @@ int gtthread_mutex_destroy(gtthread_mutex_t *mutex){
   steque_destroy(mutex->waiting_list);
   free(mutex->waiting_list);
   sigprocmask(SIG_UNBLOCK,&vtalrm,NULL);
+  return 0;
 
 }

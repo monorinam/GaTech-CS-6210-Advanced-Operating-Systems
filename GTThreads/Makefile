@@ -1,4 +1,4 @@
-CC = gcc            # default is CC = cc
+C = gcc            # default is CC = cc
 CFLAGS = -g -Wall   # default is CFLAGS = [blank]
 
 GTTHREADS_SRC = gtthread_sched.c gtthread_mutex.c steque.c

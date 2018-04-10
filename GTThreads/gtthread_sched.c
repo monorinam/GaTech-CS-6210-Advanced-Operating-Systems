@@ -43,7 +43,6 @@ static gtthread* find_thread_in_queue(gtthread_t thread, int *queue){
   gtthread *found_thread;
   int run_length = steque_size(run_queue);
   int dead_length = steque_size(dead_list);
-  int flag = 0;
   // Look in run queue first
   for(int i = 0; i < run_length; i++){
     temp_thread = steque_front(run_queue);
@@ -125,7 +124,7 @@ void block_thread()
   //Pop the current thread from the run queue
   gtthread *curr_thread = (gtthread*) steque_pop(run_queue);
   //Mark thread as blocked and add to dead_list
-  curr_thread->state == BLOCK;
+  curr_thread->state = BLOCK;
   steque_enqueue(dead_list,curr_thread);
   //Run the next thread
   run_next_thread(curr_thread);
@@ -138,7 +137,7 @@ and add it to the running queue
 void unblock_thread(gtthread_t ID)
 {
   //Find the thread using the thread ID in the dead list
-  int which_queue,pos;
+  int which_queue;
   gtthread *thread;
   thread = find_thread_in_queue(ID,&which_queue);
   if(which_queue == DEADQ && thread->state == BLOCK){
@@ -158,7 +157,6 @@ void unblock_thread(gtthread_t ID)
 // and starts the next scheduled thread in the queue
 void alrm_handler(int sig){
   gtthread *curr_thread;
-  gtthread *next_thread;
 
   sigprocmask(SIG_BLOCK,&vtalrm,NULL);
   //Add old thread to end of run queue
@@ -239,7 +237,7 @@ void gtthread_init(long period){
     perror("Main thread not initialized");
     exit(EXIT_FAILURE);
   }
-
+ 
   // Set up the main thread
   main_thread->thread_id = ++thread_cnt;
 
@@ -257,6 +255,7 @@ void gtthread_init(long period){
     exit(EXIT_FAILURE);
   }
   main_thread->context.uc_stack.ss_size = SIGSTKSZ;
+  main_thread->joinlist =(steque_t*) malloc(sizeof(steque_t));
   steque_init(main_thread->joinlist);
   //Main thread state
   main_thread->state = RDY;
@@ -302,7 +301,8 @@ int gtthread_create(gtthread_t *thread,
     //exit(EXIT_FAILURE);
     return FAILURE;
   }
-   
+  //Create the join list
+  this_thread->joinlist = (steque_t*) malloc(sizeof(steque_t));
   // Add thread characteristics
   this_thread->thread_id = ++ thread_cnt;
   *thread = thread_cnt;

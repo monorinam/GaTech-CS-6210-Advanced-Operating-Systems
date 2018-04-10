@@ -45,9 +45,9 @@ typedef struct gtthread {
 of the API functions */
 typedef struct gtthread_mutex_t{
 	gtthread_t lock_thread_ID; // ID of thread holding the lock currently
-	steque_t waiting_list; //list of threads waiting on mutex 
+	steque_t* waiting_list; //list of threads waiting on mutex 
 
-}  ;
+}gtthread_mutex_t;
 
 
 void gtthread_init(long period);
@@ -66,4 +66,7 @@ int  gtthread_mutex_init(gtthread_mutex_t *mutex);
 int  gtthread_mutex_lock(gtthread_mutex_t *mutex);
 int  gtthread_mutex_unlock(gtthread_mutex_t *mutex);
 int  gtthread_mutex_destroy(gtthread_mutex_t *mutex);
+/* Private functions between gtthread_sched and gthtread_mutex.c */
+void block_thread();
+void unblock_thread(gtthread_t ID);
 #endif
